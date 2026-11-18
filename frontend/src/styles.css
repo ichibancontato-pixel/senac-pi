@@ -95,6 +95,21 @@ select {
   font-size: 15.5px;
 }
 
+.menu-item-botao {
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item-descricao {
+  color: var(--texto-suave);
+  font-size: 13.5px;
+  text-align: right;
+}
+
 .menu-item:hover,
 .menu-item:focus-visible {
   border-color: var(--azul);
@@ -111,6 +126,35 @@ select {
   font-size: 13.5px;
 }
 
+.perfil-atual {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 10px;
+  color: var(--texto-suave);
+  font-size: 13.5px;
+}
+
+.texto-suave {
+  margin: 0 0 14px;
+  color: var(--texto-suave);
+}
+
+.texto-verde {
+  color: var(--verde);
+}
+
+.texto-vermelho {
+  color: var(--vermelho);
+}
+
+code {
+  color: var(--azul-texto);
+  font-family: inherit;
+}
+
 .nota-demo {
   margin: 10px 0 0;
   font-size: 12px;
@@ -125,10 +169,20 @@ select {
 }
 
 .breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  align-items: baseline;
+  justify-content: space-between;
   padding: 10px 16px;
   border: 2px solid var(--azul);
   background: var(--painel);
   font-size: 15.5px;
+}
+
+.breadcrumb-perfil {
+  color: var(--texto-suave);
+  font-size: 13.5px;
 }
 
 .breadcrumb a {
@@ -261,6 +315,10 @@ select.entrada {
   cursor: pointer;
 }
 
+.opcao input[type='checkbox'] {
+  accent-color: var(--verde);
+}
+
 .opcao input {
   width: 14px;
   height: 14px;
@@ -327,6 +385,10 @@ select.entrada {
 }
 
 .barra-voltar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
   margin-top: 16px;
 }
 
@@ -418,6 +480,20 @@ select.entrada {
 
 .sem-margem {
   margin: 0;
+}
+
+.tabela tfoot td {
+  border-bottom: 0;
+  border-top: 1px solid var(--azul);
+  font-weight: bold;
+}
+
+.numero {
+  text-align: right;
+}
+
+.tabela th.numero {
+  text-align: right;
 }
 
 .carregando {
@@ -547,6 +623,29 @@ select.entrada {
   letter-spacing: 0.08em;
 }
 
+.declaracao {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px dashed var(--borda);
+}
+
+.declaracao-titulo {
+  margin: 0 0 12px;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.declaracao p {
+  margin: 0 0 10px;
+  line-height: 1.6;
+}
+
+.declaracao-rodape {
+  color: var(--texto-suave);
+  font-size: 13px;
+}
+
 .comprovante-titulo {
   margin: 18px 0 0;
   color: var(--texto-suave);
@@ -598,7 +697,12 @@ select.entrada {
     color: #000;
   }
 
-  .destaque {
+  .destaque,
+  .declaracao-rodape {
     color: #000;
+  }
+
+  .declaracao {
+    border-color: #000;
   }
 }

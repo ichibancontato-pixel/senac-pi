@@ -1,4 +1,6 @@
-// Caso de Uso 4: consultar pessoa por CPF, matrícula, nome ou data de nascimento.
+// Caso de Uso 4: consultar pessoas físicas e jurídicas por documento, matrícula, nome ou tipo.
+// API: GET /api/pessoas, cruzando com /api/alunos, /api/docentes e /api/fornecedores
+// para mostrar o vínculo de cada registro (perfil Administrador).
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -7,19 +9,18 @@ import { Campo } from '../components/Campo'
 import { Mensagem, type MensagemTela } from '../components/Mensagem'
 import { Cabecalho, Pagina } from '../components/Pagina'
 import { api } from '../services/api'
-import { ehApiError, MENSAGENS } from '../services/erros'
-import type { FiltroPessoa, PessoaResumo } from '../types'
-import { propsDeErro } from '../utils/acessibilidade'
-import { dataBrParaIso, mascaraCpf, mascaraData, soDigitos } from '../utils/formatos'
+import { MENSAGENS, mensagemDeErro } from '../services/erros'
+import type { FiltroPessoa, PessoaResumo, TipoPessoa } from '../types'
+import { formatarDocumento, mascaraDocumento, soDigitos } from '../utils/formatos'
 
 interface Filtros {
-  cpf: string
+  documento: string
   matricula: string
   nome: string
-  dataNascimento: string
+  tipoPessoa: TipoPessoa | ''
 }
 
-const SEM_FILTROS: Filtros = { cpf: '', matricula: '', nome: '', dataNascimento: '' }
+const SEM_FILTROS: Filtros = { documento: '', matricula: '', nome: '', tipoPessoa: '' }
 
 interface Consulta {
   lista: PessoaResumo[]
@@ -32,13 +33,7 @@ async function obterPessoas(filtro: FiltroPessoa): Promise<Consulta> {
     return { lista, mensagem: lista.length === 0 ? { tipo: 'info', texto: MENSAGENS.nenhumaPessoa } : null }
   } catch (erro) {
     // Os filtros continuam na tela para o usuário tentar de novo
-    return {
-      lista: [],
-      mensagem: {
-        tipo: 'erro',
-        texto: ehApiError(erro) && erro.codigo !== 'CONEXAO' ? erro.message : MENSAGENS.conexaoConsulta,
-      },
-    }
+    return { lista: [], mensagem: { tipo: 'erro', texto: mensagemDeErro(erro, 'consulta') } }
   }
 }
 
@@ -46,7 +41,6 @@ export default function ConsultarPessoa() {
   const navigate = useNavigate()
   const primeiroCampo = useRef<HTMLInputElement>(null)
   const [filtros, setFiltros] = useState<Filtros>(SEM_FILTROS)
-  const [erroData, setErroData] = useState<string>()
   const [resultados, setResultados] = useState<PessoaResumo[]>([])
   const [carregando, setCarregando] = useState(true)
   const [mensagem, setMensagem] = useState<MensagemTela | null>(null)
@@ -74,33 +68,22 @@ export default function ConsultarPessoa() {
     }
   }, [])
 
-  function alterar(campo: keyof Filtros, valor: string) {
+  function alterar<C extends keyof Filtros>(campo: C, valor: Filtros[C]) {
     setFiltros((atuais) => ({ ...atuais, [campo]: valor }))
-    if (campo === 'dataNascimento') setErroData(undefined)
   }
 
   function aoPesquisar(evento: FormEvent) {
     evento.preventDefault()
-    let dataIso: string | undefined
-    if (filtros.dataNascimento) {
-      const convertida = dataBrParaIso(filtros.dataNascimento)
-      if (!convertida) {
-        setErroData('Data inválida. Use o formato DD/MM/AAAA.')
-        return
-      }
-      dataIso = convertida
-    }
     void pesquisar({
-      cpf: soDigitos(filtros.cpf) || undefined,
+      documento: soDigitos(filtros.documento) || undefined,
       matricula: soDigitos(filtros.matricula) || undefined,
       nome: filtros.nome.trim() || undefined,
-      data_nascimento: dataIso,
+      tipoPessoa: filtros.tipoPessoa || undefined,
     })
   }
 
   function limparFiltros() {
     setFiltros(SEM_FILTROS)
-    setErroData(undefined)
     void pesquisar({})
     primeiroCampo.current?.focus()
   }
@@ -123,15 +106,15 @@ export default function ConsultarPessoa() {
           FILTROS DE BUSCA:
         </h2>
         <div className="grade grade-2">
-          <Campo id="filtro-cpf" rotulo="CPF">
+          <Campo id="filtro-documento" rotulo="CPF / CNPJ">
             <input
               ref={primeiroCampo}
-              id="filtro-cpf"
+              id="filtro-documento"
               className="entrada"
               inputMode="numeric"
               autoComplete="off"
-              value={filtros.cpf}
-              onChange={(e) => alterar('cpf', mascaraCpf(e.target.value))}
+              value={filtros.documento}
+              onChange={(e) => alterar('documento', mascaraDocumento(e.target.value))}
             />
           </Campo>
           <Campo id="filtro-matricula" rotulo="Matrícula">
@@ -145,7 +128,7 @@ export default function ConsultarPessoa() {
               onChange={(e) => alterar('matricula', soDigitos(e.target.value))}
             />
           </Campo>
-          <Campo id="filtro-nome" rotulo="Nome">
+          <Campo id="filtro-nome" rotulo="Nome / Razão Social">
             <input
               id="filtro-nome"
               className="entrada"
@@ -154,17 +137,17 @@ export default function ConsultarPessoa() {
               onChange={(e) => alterar('nome', e.target.value)}
             />
           </Campo>
-          <Campo id="filtro-data" rotulo="Data de Nascimento" erro={erroData}>
-            <input
-              id="filtro-data"
+          <Campo id="filtro-tipo" rotulo="Tipo de Pessoa">
+            <select
+              id="filtro-tipo"
               className="entrada"
-              inputMode="numeric"
-              placeholder="DD/MM/AAAA"
-              autoComplete="off"
-              value={filtros.dataNascimento}
-              onChange={(e) => alterar('dataNascimento', mascaraData(e.target.value))}
-              {...propsDeErro('filtro-data', erroData)}
-            />
+              value={filtros.tipoPessoa}
+              onChange={(e) => alterar('tipoPessoa', e.target.value as TipoPessoa | '')}
+            >
+              <option value="">Todas</option>
+              <option value="FISICA">Pessoa física</option>
+              <option value="JURIDICA">Pessoa jurídica</option>
+            </select>
           </Campo>
         </div>
         <div className="filtros-acoes">
@@ -200,29 +183,29 @@ export default function ConsultarPessoa() {
               <colgroup>
                 <col style={{ width: '35%' }} />
                 <col style={{ width: '24%' }} />
-                <col style={{ width: '13.5%' }} />
+                <col style={{ width: '17%' }} />
                 <col />
               </colgroup>
               <thead>
                 <tr>
-                  <th scope="col">Nome Completo</th>
-                  <th scope="col">CPF</th>
+                  <th scope="col">Nome / Razão Social</th>
+                  <th scope="col">CPF / CNPJ</th>
                   <th scope="col">Vínculo</th>
                   <th scope="col">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {resultados.map((pessoa) => (
-                  <tr key={pessoa.id_pessoa}>
+                  <tr key={pessoa.id}>
                     <td>{pessoa.nome}</td>
-                    <td>{mascaraCpf(pessoa.cpf)}</td>
-                    <td>{pessoa.vinculo ?? '—'}</td>
+                    <td>{formatarDocumento(pessoa.documento)}</td>
+                    <td>{pessoa.vinculo}</td>
                     <td>
                       <button
                         type="button"
                         className="link-acao"
                         aria-label={`Ver perfil de ${pessoa.nome}`}
-                        onClick={() => navigate(`/pessoas/${pessoa.id_pessoa}`)}
+                        onClick={() => navigate(`/pessoas/${pessoa.id}`)}
                       >
                         [ VER PERFIL ]
                       </button>

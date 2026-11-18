@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import { usePerfil } from '../services/usePerfil'
 
 interface PaginaProps {
   titulo: string
@@ -20,19 +21,23 @@ interface CabecalhoProps {
   caminho: string[]
 }
 
-/** Caixa de navegação "[ Menu Principal ] > Módulo > Tela" com a linha azul abaixo. */
+/** Caixa de navegação "[ Menu Principal ] > Módulo > Tela", com o perfil atual à direita. */
 export function Cabecalho({ caminho }: CabecalhoProps) {
+  const perfil = usePerfil()
   return (
     <header className="cabecalho nao-imprimir">
-      <nav className="breadcrumb" aria-label="Você está em">
-        <Link to="/">[ Menu Principal ]</Link>
-        {caminho.map((item, indice) => (
-          <span key={item} aria-current={indice === caminho.length - 1 ? 'page' : undefined}>
-            {' > '}
-            {item}
-          </span>
-        ))}
-      </nav>
+      <div className="breadcrumb">
+        <nav aria-label="Você está em">
+          <Link to="/">[ Menu Principal ]</Link>
+          {caminho.map((item, indice) => (
+            <span key={item} aria-current={indice === caminho.length - 1 ? 'page' : undefined}>
+              {' > '}
+              {item}
+            </span>
+          ))}
+        </nav>
+        {perfil ? <span className="breadcrumb-perfil">Perfil: {perfil}</span> : null}
+      </div>
     </header>
   )
 }

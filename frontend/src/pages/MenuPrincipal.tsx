@@ -1,29 +1,44 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Pagina } from '../components/Pagina'
 import { modoDemonstracao } from '../services/api'
 import { restaurarDadosDemo } from '../services/mock'
+import { definirPerfil, podeAcessar, type Funcionalidade } from '../services/sessao'
+import { usePerfil } from '../services/usePerfil'
 
-const OPCOES = [
-  { tecla: '1', rotulo: 'Cadastrar Aluno', rota: '/alunos/cadastrar' },
-  { tecla: '2', rotulo: 'Cadastrar Docente', rota: '/docentes/cadastrar' },
-  { tecla: '3', rotulo: 'Consultar Fornecedor', rota: '/fornecedores/consultar' },
-  { tecla: '4', rotulo: 'Consultar Pessoa', rota: '/pessoas/consultar' },
+const OPCOES: { rotulo: string; rota: string; funcionalidade: Funcionalidade }[] = [
+  { rotulo: 'Cadastrar Aluno', rota: '/alunos/cadastrar', funcionalidade: 'alunos' },
+  { rotulo: 'Cadastrar Docente', rota: '/docentes/cadastrar', funcionalidade: 'docentes' },
+  { rotulo: 'Consultar Fornecedor', rota: '/fornecedores/consultar', funcionalidade: 'fornecedores' },
+  { rotulo: 'Consultar Pessoa', rota: '/pessoas/consultar', funcionalidade: 'pessoas' },
+  { rotulo: 'Relatório de Matrículas', rota: '/relatorios/matriculas', funcionalidade: 'relatorios' },
 ]
 
 export default function MenuPrincipal() {
   const navigate = useNavigate()
+  const perfil = usePerfil()
 
-  // Atalho de teclado: digitar 1 a 4 abre a opção correspondente
+  // Painel por perfil: só aparecem as funções que o perfil pode usar
+  const opcoes = useMemo(
+    () => (perfil ? OPCOES.filter((o) => podeAcessar(perfil, o.funcionalidade)) : []),
+    [perfil],
+  )
+
+  // Atalho de teclado: o número da opção abre a tela
   useEffect(() => {
     function aoTeclar(evento: KeyboardEvent) {
       if (evento.ctrlKey || evento.altKey || evento.metaKey) return
-      const opcao = OPCOES.find((o) => o.tecla === evento.key)
+      const opcao = opcoes[Number(evento.key) - 1]
       if (opcao) navigate(opcao.rota)
     }
     window.addEventListener('keydown', aoTeclar)
     return () => window.removeEventListener('keydown', aoTeclar)
-  }, [navigate])
+  }, [navigate, opcoes])
+
+  function trocarPerfil() {
+    definirPerfil(null)
+    navigate('/entrar')
+  }
 
   function restaurar() {
     restaurarDadosDemo()
@@ -35,15 +50,22 @@ export default function MenuPrincipal() {
       <h1 className="titulo-sistema">SISTEMA DE GESTÃO ACADÊMICA</h1>
       <hr className="linha" />
 
+      <div className="perfil-atual">
+        <span>Perfil: {perfil}</span>
+        <button type="button" className="link-acao" onClick={trocarPerfil}>
+          [ trocar perfil ]
+        </button>
+      </div>
+
       <nav aria-labelledby="menu-rotulo">
         <h2 id="menu-rotulo" className="menu-rotulo">
           [ MENU PRINCIPAL ]
         </h2>
         <ul className="menu-lista">
-          {OPCOES.map((opcao) => (
+          {opcoes.map((opcao, indice) => (
             <li key={opcao.rota}>
               <Link className="menu-item" to={opcao.rota}>
-                [{opcao.tecla}] {opcao.rotulo}
+                [{indice + 1}] {opcao.rotulo}
               </Link>
             </li>
           ))}

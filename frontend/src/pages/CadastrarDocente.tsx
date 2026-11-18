@@ -1,6 +1,7 @@
 // Caso de Uso 2 / Jornada do Ricardo (RH): cadastrar docente.
+// API: POST /api/docentes (perfil RH).
 
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Botao } from '../components/Botao'
 import { Campo } from '../components/Campo'
@@ -9,16 +10,30 @@ import { Mensagem, type MensagemTela } from '../components/Mensagem'
 import { Cabecalho, Pagina } from '../components/Pagina'
 import { Secao } from '../components/Secao'
 import { api } from '../services/api'
-import { ehApiError, MENSAGENS } from '../services/erros'
-import { TITULACOES, type Departamento, type DocenteCadastrado, type Titulacao } from '../types'
+import { ehApiError, MENSAGENS, mensagemDeErro } from '../services/erros'
+import { podeAcessar } from '../services/sessao'
+import { usePerfil } from '../services/usePerfil'
+import { DEPARTAMENTOS, TITULACOES, type Docente } from '../types'
 import { propsDeErro } from '../utils/acessibilidade'
-import { cpfComFormatoValido, mascaraCpf, soDigitos, textoOuNulo } from '../utils/formatos'
+import {
+  cpfComFormatoValido,
+  digitosOuNulo,
+  emailValido,
+  formatarDocumento,
+  mascaraCpf,
+  mascaraTelefone,
+  soDigitos,
+  telefoneValido,
+  textoOuNulo,
+} from '../utils/formatos'
 
 interface Formulario {
   nome: string
   cpf: string
-  titulacao: Titulacao | ''
-  idDepartamento: string
+  telefone: string
+  email: string
+  titulacao: string
+  departamento: string
   cargaHoraria: string
   banco: string
   agencia: string
@@ -31,27 +46,22 @@ type Erros = Partial<Record<NomeCampo, string>>
 const VAZIO: Formulario = {
   nome: '',
   cpf: '',
+  telefone: '',
+  email: '',
   titulacao: '',
-  idDepartamento: '',
+  departamento: '',
   cargaHoraria: '',
   banco: '',
   agencia: '',
   contaCorrente: '',
 }
 
-const CAMPOS_API: Record<string, NomeCampo> = {
-  nome: 'nome',
-  cpf: 'cpf',
-  titulacao: 'titulacao',
-  id_departamento: 'idDepartamento',
-  carga_horaria: 'cargaHoraria',
-  banco: 'banco',
-  agencia: 'agencia',
-  conta_corrente: 'contaCorrente',
-}
-
 /** Agência e conta aceitam só dígitos e hífen (ex.: 0001-9). */
 const soDigitosEHifen = (valor: string) => valor.replace(/[^\d-]/g, '')
+
+/** O backend guarda os dados bancários num texto único, no formato do guia de testes. */
+const montarDadosBancarios = (f: Formulario) =>
+  `${f.banco.trim()} / Ag ${f.agencia.trim()} / CC ${f.contaCorrente.trim()}`
 
 function validar(form: Formulario): { erros: Erros; faltaObrigatorio: boolean } {
   const erros: Erros = {}
@@ -60,11 +70,16 @@ function validar(form: Formulario): { erros: Erros; faltaObrigatorio: boolean } 
   if (!form.nome.trim()) erros.nome = obrigatorio
   if (!form.cpf) erros.cpf = obrigatorio
   else if (!cpfComFormatoValido(form.cpf)) erros.cpf = 'CPF inválido. Use o formato 000.000.000-00.'
+  if (form.telefone && !telefoneValido(form.telefone)) erros.telefone = 'Telefone incompleto.'
+  if (form.email && !emailValido(form.email)) erros.email = 'E-mail inválido.'
   if (!form.titulacao) erros.titulacao = obrigatorio
-  if (!form.idDepartamento) erros.idDepartamento = obrigatorio
+  if (!form.departamento) erros.departamento = obrigatorio
   if (!form.cargaHoraria) erros.cargaHoraria = obrigatorio
   else if (Number(form.cargaHoraria) <= 0) erros.cargaHoraria = 'Informe um valor maior que zero.'
   else if (Number(form.cargaHoraria) > 60) erros.cargaHoraria = 'Máximo de 60 horas semanais.'
+  if (!form.banco.trim()) erros.banco = obrigatorio
+  if (!form.agencia.trim()) erros.agencia = obrigatorio
+  if (!form.contaCorrente.trim()) erros.contaCorrente = obrigatorio
 
   const faltaObrigatorio = Object.values(erros).includes(obrigatorio)
   return { erros, faltaObrigatorio }
@@ -72,23 +87,14 @@ function validar(form: Formulario): { erros: Erros; faltaObrigatorio: boolean } 
 
 export default function CadastrarDocente() {
   const navigate = useNavigate()
+  const perfil = usePerfil()
   const formRef = useRef<HTMLFormElement>(null)
   const [form, setForm] = useState<Formulario>(VAZIO)
   const [erros, setErros] = useState<Erros>({})
   const [mensagem, setMensagem] = useState<MensagemTela | null>(null)
-  const [departamentos, setDepartamentos] = useState<Departamento[]>([])
   const [salvando, setSalvando] = useState(false)
-  const [cadastrado, setCadastrado] = useState<DocenteCadastrado | null>(null)
+  const [cadastrado, setCadastrado] = useState<Docente | null>(null)
   const [confirmarSaida, setConfirmarSaida] = useState(false)
-
-  useEffect(() => {
-    api
-      .listarDepartamentos()
-      .then(setDepartamentos)
-      .catch(() =>
-        setMensagem({ tipo: 'erro', texto: 'Não foi possível carregar a lista de departamentos.' }),
-      )
-  }, [])
 
   const preenchido = Object.values(form).some((valor) => valor !== '')
 
@@ -125,17 +131,17 @@ export default function CadastrarDocente() {
     setSalvando(true)
     setMensagem(null)
     try {
-      const resultado = await api.cadastrarDocente({
+      const docente = await api.cadastrarDocente({
         nome: form.nome.trim(),
-        cpf: soDigitos(form.cpf),
-        titulacao: form.titulacao as Titulacao,
-        id_departamento: Number(form.idDepartamento),
-        carga_horaria: Number(form.cargaHoraria),
-        banco: textoOuNulo(form.banco),
-        agencia: textoOuNulo(form.agencia),
-        conta_corrente: textoOuNulo(form.contaCorrente),
+        documento: soDigitos(form.cpf),
+        email: textoOuNulo(form.email),
+        telefone: digitosOuNulo(form.telefone),
+        titulacao: form.titulacao,
+        departamento: form.departamento,
+        cargaHoraria: Number(form.cargaHoraria),
+        dadosBancarios: montarDadosBancarios(form),
       })
-      setCadastrado(resultado)
+      setCadastrado(docente)
       setForm(VAZIO)
     } catch (erro) {
       // Em qualquer falha o formulário continua preenchido, para não perder a digitação
@@ -143,19 +149,8 @@ export default function CadastrarDocente() {
         setErros({ cpf: 'CPF já cadastrado.' })
         setMensagem({ tipo: 'erro', texto: MENSAGENS.cpfDuplicado })
         focarPrimeiroErro()
-      } else if (ehApiError(erro) && erro.codigo === 'VALIDACAO') {
-        const doServidor: Erros = {}
-        for (const campo of erro.campos) {
-          const nome = CAMPOS_API[campo]
-          if (nome) doServidor[nome] = 'Verifique este campo.'
-        }
-        setErros(doServidor)
-        setMensagem({ tipo: 'erro', texto: erro.message })
-        focarPrimeiroErro()
-      } else if (ehApiError(erro) && erro.codigo === 'CONEXAO') {
-        setMensagem({ tipo: 'erro', texto: MENSAGENS.conexaoCadastro })
       } else {
-        setMensagem({ tipo: 'erro', texto: ehApiError(erro) ? erro.message : 'Erro inesperado ao salvar.' })
+        setMensagem({ tipo: 'erro', texto: mensagemDeErro(erro, 'cadastro') })
       }
     } finally {
       setSalvando(false)
@@ -186,19 +181,23 @@ export default function CadastrarDocente() {
               <dt>Nome:</dt>
               <dd>{cadastrado.nome}</dd>
               <dt>CPF:</dt>
-              <dd>{mascaraCpf(cadastrado.cpf)}</dd>
+              <dd>{formatarDocumento(cadastrado.documento)}</dd>
               <dt>Titulação:</dt>
               <dd>{cadastrado.titulacao}</dd>
               <dt>Departamento:</dt>
-              <dd>{cadastrado.nome_depto}</dd>
+              <dd>{cadastrado.departamento}</dd>
               <dt>Carga horária:</dt>
               <dd>{cadastrado.carga_horaria} horas semanais</dd>
+              <dt>Dados bancários:</dt>
+              <dd>{cadastrado.dados_bancarios}</dd>
             </dl>
           </Secao>
           <div className="acoes">
             <Botao onClick={() => navigate('/')}>← VOLTAR AO MENU</Botao>
             <div className="acoes-direita">
-              <Botao onClick={() => navigate(`/pessoas/${cadastrado.id_pessoa}`)}>VER PERFIL</Botao>
+              {perfil && podeAcessar(perfil, 'pessoas') ? (
+                <Botao onClick={() => navigate(`/pessoas/${cadastrado.pessoa_id}`)}>VER PERFIL</Botao>
+              ) : null}
               <Botao
                 onClick={() => {
                   setCadastrado(null)
@@ -225,15 +224,41 @@ export default function CadastrarDocente() {
                 {...propsDeErro('nome', erros.nome)}
               />
             </Campo>
-            <Campo id="cpf" rotulo="CPF" obrigatorio erro={erros.cpf} className="campo-estreito">
+            <div className="grade grade-2">
+              <Campo id="cpf" rotulo="CPF" obrigatorio erro={erros.cpf}>
+                <input
+                  id="cpf"
+                  className="entrada"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  value={form.cpf}
+                  onChange={(e) => alterar('cpf', mascaraCpf(e.target.value))}
+                  {...propsDeErro('cpf', erros.cpf)}
+                />
+              </Campo>
+              <Campo id="telefone" rotulo="Telefone" erro={erros.telefone}>
+                <input
+                  id="telefone"
+                  className="entrada"
+                  inputMode="tel"
+                  autoComplete="off"
+                  placeholder="(11) 99999-0000"
+                  value={form.telefone}
+                  onChange={(e) => alterar('telefone', mascaraTelefone(e.target.value))}
+                  {...propsDeErro('telefone', erros.telefone)}
+                />
+              </Campo>
+            </div>
+            <Campo id="email" rotulo="E-mail" erro={erros.email}>
               <input
-                id="cpf"
+                id="email"
+                type="email"
                 className="entrada"
-                inputMode="numeric"
                 autoComplete="off"
-                value={form.cpf}
-                onChange={(e) => alterar('cpf', mascaraCpf(e.target.value))}
-                {...propsDeErro('cpf', erros.cpf)}
+                maxLength={150}
+                value={form.email}
+                onChange={(e) => alterar('email', e.target.value)}
+                {...propsDeErro('email', erros.email)}
               />
             </Campo>
           </Secao>
@@ -255,18 +280,18 @@ export default function CadastrarDocente() {
                 ))}
               </select>
             </Campo>
-            <Campo id="departamento" rotulo="Departamento" obrigatorio erro={erros.idDepartamento}>
+            <Campo id="departamento" rotulo="Departamento" obrigatorio erro={erros.departamento}>
               <select
                 id="departamento"
                 className="entrada"
-                value={form.idDepartamento}
-                onChange={(e) => alterar('idDepartamento', e.target.value)}
-                {...propsDeErro('departamento', erros.idDepartamento)}
+                value={form.departamento}
+                onChange={(e) => alterar('departamento', e.target.value)}
+                {...propsDeErro('departamento', erros.departamento)}
               >
                 <option value="">Selecione o departamento...</option>
-                {departamentos.map((departamento) => (
-                  <option key={departamento.id_departamento} value={departamento.id_departamento}>
-                    {departamento.nome_depto}
+                {DEPARTAMENTOS.map((departamento) => (
+                  <option key={departamento} value={departamento}>
+                    {departamento}
                   </option>
                 ))}
               </select>
@@ -289,17 +314,19 @@ export default function CadastrarDocente() {
 
           <Secao titulo="DADOS BANCÁRIOS">
             <div className="grade grade-3">
-              <Campo id="banco" rotulo="Banco">
+              <Campo id="banco" rotulo="Banco" obrigatorio erro={erros.banco}>
                 <input
                   id="banco"
                   className="entrada"
-                  maxLength={80}
+                  maxLength={60}
                   autoComplete="off"
+                  placeholder="ex.: Banco 001"
                   value={form.banco}
                   onChange={(e) => alterar('banco', e.target.value)}
+                  {...propsDeErro('banco', erros.banco)}
                 />
               </Campo>
-              <Campo id="agencia" rotulo="Agência">
+              <Campo id="agencia" rotulo="Agência" obrigatorio erro={erros.agencia}>
                 <input
                   id="agencia"
                   className="entrada"
@@ -308,9 +335,10 @@ export default function CadastrarDocente() {
                   autoComplete="off"
                   value={form.agencia}
                   onChange={(e) => alterar('agencia', soDigitosEHifen(e.target.value))}
+                  {...propsDeErro('agencia', erros.agencia)}
                 />
               </Campo>
-              <Campo id="contaCorrente" rotulo="Conta Corrente">
+              <Campo id="contaCorrente" rotulo="Conta Corrente" obrigatorio erro={erros.contaCorrente}>
                 <input
                   id="contaCorrente"
                   className="entrada"
@@ -319,16 +347,13 @@ export default function CadastrarDocente() {
                   autoComplete="off"
                   value={form.contaCorrente}
                   onChange={(e) => alterar('contaCorrente', soDigitosEHifen(e.target.value))}
+                  {...propsDeErro('contaCorrente', erros.contaCorrente)}
                 />
               </Campo>
             </div>
           </Secao>
 
-          {mensagem ? (
-            <Mensagem tipo={mensagem.tipo} detalhe={mensagem.detalhe}>
-              {mensagem.texto}
-            </Mensagem>
-          ) : null}
+          {mensagem ? <Mensagem tipo={mensagem.tipo}>{mensagem.texto}</Mensagem> : null}
 
           <div className="acoes">
             <Botao onClick={sair}>← VOLTAR AO MENU</Botao>

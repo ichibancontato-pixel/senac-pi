@@ -1,6 +1,7 @@
-// Caso de Uso 1 / Jornada da Mariana: cadastrar aluno e gerar matrícula.
+// Caso de Uso 1 / Jornada da Mariana: cadastrar aluno, gerar matrícula e emitir comprovante.
+// API: POST /api/alunos e GET /api/alunos/:id/comprovante (perfil Secretaria Acadêmica).
 
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Botao } from '../components/Botao'
 import { Campo } from '../components/Campo'
@@ -9,59 +10,49 @@ import { Mensagem, type MensagemTela } from '../components/Mensagem'
 import { Cabecalho, Pagina } from '../components/Pagina'
 import { Secao } from '../components/Secao'
 import { api } from '../services/api'
-import { ehApiError, MENSAGENS } from '../services/erros'
-import { TURNOS, type AlunoCadastrado, type Curso, type Turno } from '../types'
+import { ehApiError, MENSAGENS, mensagemDeErro } from '../services/erros'
+import { CURSOS, periodosLetivos, type Aluno, type ComprovanteVinculo } from '../types'
 import { propsDeErro } from '../utils/acessibilidade'
 import {
+  capitalizar,
   cpfComFormatoValido,
-  dataBrParaIso,
-  hojeIso,
-  isoParaDataBr,
+  digitosOuNulo,
+  emailValido,
+  formatarDataHora,
+  formatarDocumento,
   mascaraCpf,
-  mascaraData,
+  mascaraTelefone,
   soDigitos,
+  telefoneValido,
+  textoOuNulo,
 } from '../utils/formatos'
 
 interface Formulario {
   nome: string
   cpf: string
-  dataNascimento: string
-  idCurso: string
-  turno: Turno | ''
+  telefone: string
+  email: string
+  curso: string
+  periodo: string
 }
 
 type NomeCampo = keyof Formulario
 type Erros = Partial<Record<NomeCampo, string>>
 
-const VAZIO: Formulario = { nome: '', cpf: '', dataNascimento: '', idCurso: '', turno: '' }
-
-/** Nomes dos campos na API -> nomes no formulário. */
-const CAMPOS_API: Record<string, NomeCampo> = {
-  nome: 'nome',
-  cpf: 'cpf',
-  data_nascimento: 'dataNascimento',
-  id_curso: 'idCurso',
-  turno: 'turno',
-}
+const VAZIO: Formulario = { nome: '', cpf: '', telefone: '', email: '', curso: '', periodo: '' }
+const PERIODOS = periodosLetivos()
 
 function validar(form: Formulario): { erros: Erros; faltaObrigatorio: boolean } {
   const erros: Erros = {}
   const obrigatorio = 'Campo obrigatório.'
 
   if (!form.nome.trim()) erros.nome = obrigatorio
-
   if (!form.cpf) erros.cpf = obrigatorio
   else if (!cpfComFormatoValido(form.cpf)) erros.cpf = 'CPF inválido. Use o formato 000.000.000-00.'
-
-  if (!form.dataNascimento) erros.dataNascimento = obrigatorio
-  else {
-    const iso = dataBrParaIso(form.dataNascimento)
-    if (!iso) erros.dataNascimento = 'Data inválida. Use o formato DD/MM/AAAA.'
-    else if (iso > hojeIso()) erros.dataNascimento = 'A data de nascimento não pode ser futura.'
-  }
-
-  if (!form.idCurso) erros.idCurso = obrigatorio
-  if (!form.turno) erros.turno = obrigatorio
+  if (form.telefone && !telefoneValido(form.telefone)) erros.telefone = 'Telefone incompleto.'
+  if (form.email && !emailValido(form.email)) erros.email = 'E-mail inválido.'
+  if (!form.curso) erros.curso = obrigatorio
+  if (!form.periodo) erros.periodo = obrigatorio
 
   const faltaObrigatorio = Object.values(erros).includes(obrigatorio)
   return { erros, faltaObrigatorio }
@@ -73,17 +64,11 @@ export default function CadastrarAluno() {
   const [form, setForm] = useState<Formulario>(VAZIO)
   const [erros, setErros] = useState<Erros>({})
   const [mensagem, setMensagem] = useState<MensagemTela | null>(null)
-  const [cursos, setCursos] = useState<Curso[]>([])
   const [salvando, setSalvando] = useState(false)
-  const [cadastrado, setCadastrado] = useState<AlunoCadastrado | null>(null)
+  const [cadastrado, setCadastrado] = useState<Aluno | null>(null)
+  const [comprovante, setComprovante] = useState<ComprovanteVinculo | null>(null)
+  const [emitindo, setEmitindo] = useState(false)
   const [confirmarSaida, setConfirmarSaida] = useState(false)
-
-  useEffect(() => {
-    api
-      .listarCursos()
-      .then(setCursos)
-      .catch(() => setMensagem({ tipo: 'erro', texto: 'Não foi possível carregar a lista de cursos.' }))
-  }, [])
 
   const preenchido = Object.values(form).some((valor) => valor !== '')
 
@@ -120,36 +105,43 @@ export default function CadastrarAluno() {
     setSalvando(true)
     setMensagem(null)
     try {
-      const resultado = await api.cadastrarAluno({
+      const aluno = await api.cadastrarAluno({
         nome: form.nome.trim(),
-        cpf: soDigitos(form.cpf),
-        data_nascimento: dataBrParaIso(form.dataNascimento) as string,
-        id_curso: Number(form.idCurso),
-        turno: form.turno as Turno,
+        documento: soDigitos(form.cpf),
+        email: textoOuNulo(form.email),
+        telefone: digitosOuNulo(form.telefone),
+        curso: form.curso,
+        periodo: form.periodo,
       })
-      setCadastrado(resultado)
+      setCadastrado(aluno)
+      setComprovante(null)
       setForm(VAZIO)
     } catch (erro) {
+      // Em qualquer falha os dados continuam no formulário
       if (ehApiError(erro) && erro.codigo === 'CONFLITO') {
         setErros({ cpf: 'CPF já cadastrado.' })
         setMensagem({ tipo: 'erro', texto: MENSAGENS.cpfDuplicado })
         focarPrimeiroErro()
-      } else if (ehApiError(erro) && erro.codigo === 'VALIDACAO') {
-        const doServidor: Erros = {}
-        for (const campo of erro.campos) {
-          const nome = CAMPOS_API[campo]
-          if (nome) doServidor[nome] = 'Verifique este campo.'
-        }
-        setErros(doServidor)
-        setMensagem({ tipo: 'erro', texto: erro.message })
-        focarPrimeiroErro()
-      } else if (ehApiError(erro) && erro.codigo === 'CONEXAO') {
-        setMensagem({ tipo: 'erro', texto: MENSAGENS.conexaoCadastro })
       } else {
-        setMensagem({ tipo: 'erro', texto: ehApiError(erro) ? erro.message : 'Erro inesperado ao salvar.' })
+        setMensagem({ tipo: 'erro', texto: mensagemDeErro(erro, 'cadastro') })
       }
     } finally {
       setSalvando(false)
+    }
+  }
+
+  async function emitirComprovante() {
+    if (!cadastrado) return
+    setEmitindo(true)
+    setMensagem(null)
+    try {
+      setComprovante(await api.emitirComprovante(cadastrado.id))
+      // Espera a declaração aparecer na tela antes de abrir a impressão
+      setTimeout(() => window.print(), 150)
+    } catch (erro) {
+      setMensagem({ tipo: 'erro', texto: mensagemDeErro(erro, 'consulta') })
+    } finally {
+      setEmitindo(false)
     }
   }
 
@@ -166,6 +158,7 @@ export default function CadastrarAluno() {
 
   function novoCadastro() {
     setCadastrado(null)
+    setComprovante(null)
     setMensagem(null)
     setErros({})
   }
@@ -178,29 +171,49 @@ export default function CadastrarAluno() {
         <>
           <Secao titulo="CADASTRO CONCLUÍDO">
             <div className="nao-imprimir">
-              <Mensagem tipo="sucesso">Aluno cadastrado com sucesso.</Mensagem>
+              <Mensagem tipo="sucesso">Aluno cadastrado e matrícula gerada automaticamente.</Mensagem>
             </div>
-            <p className="comprovante-titulo">COMPROVANTE DE VÍNCULO ACADÊMICO</p>
-            <dl className="resumo">
+            <dl className="resumo nao-imprimir">
               <dt>Matrícula:</dt>
               <dd className="destaque">{cadastrado.matricula}</dd>
               <dt>Nome:</dt>
               <dd>{cadastrado.nome}</dd>
               <dt>CPF:</dt>
-              <dd>{mascaraCpf(cadastrado.cpf)}</dd>
+              <dd>{formatarDocumento(cadastrado.documento)}</dd>
               <dt>Curso:</dt>
-              <dd>{cadastrado.nome_curso}</dd>
-              <dt>Turno:</dt>
-              <dd>{cadastrado.turno}</dd>
-              <dt>Data da matrícula:</dt>
-              <dd>{isoParaDataBr(cadastrado.data_matricula)}</dd>
+              <dd>{cadastrado.curso}</dd>
+              <dt>Período:</dt>
+              <dd>{cadastrado.periodo}</dd>
+              <dt>Situação:</dt>
+              <dd>{capitalizar(cadastrado.status_vinculo)}</dd>
             </dl>
+
+            {comprovante ? (
+              <article className="declaracao" aria-label="Comprovante de vínculo">
+                <h3 className="declaracao-titulo">{comprovante.comprovante}</h3>
+                <p>
+                  Declaramos que <strong>{comprovante.nome}</strong>, CPF {formatarDocumento(comprovante.cpf)},
+                  possui vínculo com esta instituição no curso de <strong>{comprovante.curso}</strong>, período
+                  letivo {comprovante.periodo}, matrícula <strong>{comprovante.matricula}</strong>, com situação{' '}
+                  {capitalizar(comprovante.status_vinculo)}.
+                </p>
+                <p className="declaracao-rodape">Emitido em {formatarDataHora(comprovante.emitido_em)}</p>
+              </article>
+            ) : null}
+
+            {mensagem ? (
+              <div className="nao-imprimir">
+                <Mensagem tipo={mensagem.tipo}>{mensagem.texto}</Mensagem>
+              </div>
+            ) : null}
           </Secao>
           <div className="acoes nao-imprimir">
             <Botao onClick={() => navigate('/')}>← VOLTAR AO MENU</Botao>
             <div className="acoes-direita">
               <Botao onClick={novoCadastro}>NOVO CADASTRO</Botao>
-              <Botao onClick={() => window.print()}>EMITIR COMPROVANTE</Botao>
+              <Botao onClick={emitirComprovante} disabled={emitindo}>
+                {emitindo ? 'EMITINDO...' : 'EMITIR COMPROVANTE'}
+              </Botao>
             </div>
           </div>
         </>
@@ -230,72 +243,76 @@ export default function CadastrarAluno() {
                   {...propsDeErro('cpf', erros.cpf)}
                 />
               </Campo>
-              <Campo
-                id="dataNascimento"
-                rotulo="Data de Nascimento (DD/MM/AAAA)"
-                obrigatorio
-                erro={erros.dataNascimento}
-              >
+              <Campo id="telefone" rotulo="Telefone" erro={erros.telefone}>
                 <input
-                  id="dataNascimento"
+                  id="telefone"
                   className="entrada"
-                  inputMode="numeric"
+                  inputMode="tel"
                   autoComplete="off"
-                  value={form.dataNascimento}
-                  onChange={(e) => alterar('dataNascimento', mascaraData(e.target.value))}
-                  {...propsDeErro('dataNascimento', erros.dataNascimento)}
+                  placeholder="(11) 99999-0000"
+                  value={form.telefone}
+                  onChange={(e) => alterar('telefone', mascaraTelefone(e.target.value))}
+                  {...propsDeErro('telefone', erros.telefone)}
                 />
               </Campo>
             </div>
+            <Campo id="email" rotulo="E-mail" erro={erros.email}>
+              <input
+                id="email"
+                type="email"
+                className="entrada"
+                autoComplete="off"
+                maxLength={150}
+                value={form.email}
+                onChange={(e) => alterar('email', e.target.value)}
+                {...propsDeErro('email', erros.email)}
+              />
+            </Campo>
           </Secao>
 
           <Secao titulo="DADOS ACADÊMICOS">
-            <Campo id="curso" rotulo="Curso" obrigatorio erro={erros.idCurso}>
+            <Campo id="curso" rotulo="Curso" obrigatorio erro={erros.curso}>
               <select
                 id="curso"
                 className="entrada"
-                value={form.idCurso}
-                onChange={(e) => alterar('idCurso', e.target.value)}
-                {...propsDeErro('curso', erros.idCurso)}
+                value={form.curso}
+                onChange={(e) => alterar('curso', e.target.value)}
+                {...propsDeErro('curso', erros.curso)}
               >
                 <option value="">Selecione um curso...</option>
-                {cursos.map((curso) => (
-                  <option key={curso.id_curso} value={curso.id_curso}>
-                    {curso.nome_curso}
+                {CURSOS.map((curso) => (
+                  <option key={curso} value={curso}>
+                    {curso}
                   </option>
                 ))}
               </select>
             </Campo>
-            <fieldset className={`campo ${erros.turno ? 'campo-invalido' : ''}`}>
-              <legend>*Turno:</legend>
+            <fieldset className={`campo ${erros.periodo ? 'campo-invalido' : ''}`}>
+              <legend>*Período Letivo:</legend>
               <div className="opcoes">
-                {TURNOS.map((turno) => (
-                  <label key={turno} className="opcao">
+                {PERIODOS.map((periodo) => (
+                  <label key={periodo} className="opcao">
                     <input
                       type="radio"
-                      name="turno"
-                      value={turno}
-                      checked={form.turno === turno}
-                      onChange={() => alterar('turno', turno)}
-                      {...propsDeErro('turno', erros.turno)}
+                      name="periodo"
+                      value={periodo}
+                      checked={form.periodo === periodo}
+                      onChange={() => alterar('periodo', periodo)}
+                      {...propsDeErro('periodo', erros.periodo)}
                     />
-                    {turno}
+                    {periodo}
                   </label>
                 ))}
               </div>
-              {erros.turno ? (
-                <span className="campo-mensagem" id="turno-erro">
-                  {erros.turno}
+              {erros.periodo ? (
+                <span className="campo-mensagem" id="periodo-erro">
+                  {erros.periodo}
                 </span>
               ) : null}
             </fieldset>
           </Secao>
 
-          {mensagem ? (
-            <Mensagem tipo={mensagem.tipo} detalhe={mensagem.detalhe}>
-              {mensagem.texto}
-            </Mensagem>
-          ) : null}
+          {mensagem ? <Mensagem tipo={mensagem.tipo}>{mensagem.texto}</Mensagem> : null}
 
           <div className="acoes">
             <Botao onClick={sair}>← VOLTAR AO MENU</Botao>

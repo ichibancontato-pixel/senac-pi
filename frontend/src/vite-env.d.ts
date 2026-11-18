@@ -1,8 +1,8 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  /** Endereço do back-end (ex.: http://127.0.0.1:5000). Vazio = modo demonstração. */
-  readonly VITE_API_URL?: string
+  /** "true" = usa dados de demonstração no navegador, sem backend. */
+  readonly VITE_MODO_DEMO?: string
 }
 
 interface ImportMeta {

@@ -1,4 +1,5 @@
 // Caso de Uso 4, passo 8: tela com todos os detalhes do registro.
+// API: GET /api/pessoas/:id e, conforme o tipo, alunos, docentes ou fornecedores.
 
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -9,14 +10,15 @@ import { Secao } from '../components/Secao'
 import { api } from '../services/api'
 import { ehApiError, MENSAGENS } from '../services/erros'
 import type { PessoaDetalhe } from '../types'
-import { isoParaDataBr, mascaraCpf } from '../utils/formatos'
+import { capitalizar, formatarDataHora, formatarDocumento, formatarTelefone } from '../utils/formatos'
 
 const ouTraco = (valor: string | null | undefined) => (valor ? valor : '—')
+const simNao = (valor: boolean) => (valor ? 'Sim' : 'Não')
 
 export default function PerfilPessoa() {
   const navigate = useNavigate()
   const { id } = useParams()
-  const [pessoa, setPessoa] = useState<PessoaDetalhe | null>(null)
+  const [detalhe, setDetalhe] = useState<PessoaDetalhe | null>(null)
   const [erroCarga, setErroCarga] = useState<string | null>(null)
 
   const numero = Number(id)
@@ -29,17 +31,21 @@ export default function PerfilPessoa() {
     api
       .obterPessoa(numero)
       .then((dados) => {
-        if (ativo) setPessoa(dados)
+        if (ativo) setDetalhe(dados)
       })
       .catch((falha: unknown) => {
         if (!ativo) return
         if (ehApiError(falha) && falha.codigo === 'NAO_ENCONTRADO') setErroCarga('Pessoa não encontrada.')
+        else if (ehApiError(falha) && falha.codigo !== 'CONEXAO') setErroCarga(falha.message)
         else setErroCarga(MENSAGENS.conexaoConsulta)
       })
     return () => {
       ativo = false
     }
   }, [idValido, numero])
+
+  const pessoa = detalhe?.pessoa
+  const juridica = pessoa?.tipo_pessoa === 'JURIDICA'
 
   return (
     <Pagina titulo={pessoa ? pessoa.nome : 'Perfil'}>
@@ -50,76 +56,70 @@ export default function PerfilPessoa() {
       </div>
 
       {erro ? <Mensagem tipo="erro">{erro}</Mensagem> : null}
-      {!pessoa && !erro ? <p className="carregando">Carregando...</p> : null}
+      {!detalhe && !erro ? <p className="carregando">Carregando...</p> : null}
 
-      {pessoa ? (
+      {detalhe && pessoa ? (
         <div className="perfil secao-separada">
-          <Secao titulo="DADOS PESSOAIS">
+          <Secao titulo="DADOS CADASTRAIS">
             <dl className="resumo">
-              <dt>Nome completo:</dt>
+              <dt>{juridica ? 'Razão social:' : 'Nome completo:'}</dt>
               <dd>{pessoa.nome}</dd>
-              <dt>CPF:</dt>
-              <dd>{mascaraCpf(pessoa.cpf)}</dd>
-              <dt>Data de nascimento:</dt>
-              <dd>{isoParaDataBr(pessoa.data_nascimento)}</dd>
+              <dt>{juridica ? 'CNPJ:' : 'CPF:'}</dt>
+              <dd>{formatarDocumento(pessoa.documento)}</dd>
+              <dt>Tipo:</dt>
+              <dd>{juridica ? 'Pessoa jurídica' : 'Pessoa física'}</dd>
               <dt>E-mail:</dt>
               <dd>{ouTraco(pessoa.email)}</dd>
               <dt>Telefone:</dt>
-              <dd>{ouTraco(pessoa.telefone)}</dd>
-              <dt>Vínculo:</dt>
-              <dd>{ouTraco(pessoa.vinculo)}</dd>
-              <dt>Situação do cadastro:</dt>
-              <dd>{pessoa.ativo ? 'Ativo' : 'Inativo'}</dd>
+              <dd>{formatarTelefone(pessoa.telefone)}</dd>
+              <dt>Cadastrado em:</dt>
+              <dd>{formatarDataHora(pessoa.criado_em)}</dd>
             </dl>
           </Secao>
 
-          {pessoa.aluno ? (
+          {detalhe.aluno ? (
             <Secao titulo="DADOS ACADÊMICOS">
               <dl className="resumo">
                 <dt>Matrícula:</dt>
-                <dd className="destaque">{pessoa.aluno.matricula}</dd>
+                <dd className="destaque">{detalhe.aluno.matricula}</dd>
                 <dt>Curso:</dt>
-                <dd>{pessoa.aluno.nome_curso}</dd>
-                <dt>Turno:</dt>
-                <dd>{pessoa.aluno.turno}</dd>
-                <dt>Situação:</dt>
-                <dd>{pessoa.aluno.situacao}</dd>
-                <dt>Data da matrícula:</dt>
-                <dd>{isoParaDataBr(pessoa.aluno.data_matricula)}</dd>
+                <dd>{detalhe.aluno.curso}</dd>
+                <dt>Período:</dt>
+                <dd>{detalhe.aluno.periodo}</dd>
+                <dt>Situação do vínculo:</dt>
+                <dd>{capitalizar(detalhe.aluno.status_vinculo)}</dd>
               </dl>
             </Secao>
           ) : null}
 
-          {pessoa.docente ? (
+          {detalhe.docente ? (
             <>
               <Secao titulo="DADOS INSTITUCIONAIS">
                 <dl className="resumo">
                   <dt>Titulação:</dt>
-                  <dd>{pessoa.docente.titulacao}</dd>
+                  <dd>{detalhe.docente.titulacao}</dd>
                   <dt>Departamento:</dt>
-                  <dd>{pessoa.docente.nome_depto}</dd>
+                  <dd>{detalhe.docente.departamento}</dd>
                   <dt>Carga horária semanal:</dt>
-                  <dd>{pessoa.docente.carga_horaria} horas</dd>
+                  <dd>{detalhe.docente.carga_horaria} horas</dd>
                 </dl>
               </Secao>
               <Secao titulo="DADOS BANCÁRIOS">
                 <dl className="resumo">
-                  <dt>Banco:</dt>
-                  <dd>{ouTraco(pessoa.docente.banco)}</dd>
-                  <dt>Agência:</dt>
-                  <dd>{ouTraco(pessoa.docente.agencia)}</dd>
-                  <dt>Conta corrente:</dt>
-                  <dd>{ouTraco(pessoa.docente.conta_corrente)}</dd>
+                  <dt>Conta para pagamento:</dt>
+                  <dd>{detalhe.docente.dados_bancarios}</dd>
                 </dl>
               </Secao>
             </>
           ) : null}
 
-          {pessoa.administrador ? (
-            <Secao titulo="ACESSO AO SISTEMA">
+          {detalhe.fornecedor ? (
+            <Secao titulo="DADOS DO FORNECEDOR">
               <dl className="resumo">
-                <dt>Login:</dt>
-                <dd>{pessoa.administrador.login}</dd>
+                <dt>Contrato vigente:</dt>
+                <dd>{simNao(detalhe.fornecedor.contrato_vigente)}</dd>
+                <dt>Pendência financeira:</dt>
+                <dd>{simNao(detalhe.fornecedor.pendencia_financeira)}</dd>
               </dl>
             </Secao>
           ) : null}

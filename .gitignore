@@ -1,0 +1,3 @@
+# Dependências e banco local do backend (gerados por npm install / npm start)
+backend/node_modules/
+backend/database.sqlite

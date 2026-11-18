@@ -7,7 +7,8 @@
     2. Instala as dependencias (npm install).
     3. Garante o arquivo .env (copia do .env.example).
     4. Valida o projeto (npm run build).
-    5. Sobe o servidor de desenvolvimento em http://127.0.0.1:5173
+    5. Verifica se o backend esta respondendo (pasta backend, porta 3000).
+    6. Sobe o servidor de desenvolvimento em http://127.0.0.1:5173
 
 .PARAMETER SetupOnly
     Apenas prepara o ambiente, sem subir o servidor.
@@ -75,7 +76,7 @@ if (Test-Path '.env') {
     Write-Host '      .env ja existe, mantido.'
 } else {
     Copy-Item '.env.example' '.env'
-    Write-Host '      .env criado a partir do .env.example (modo demonstracao).'
+    Write-Host '      .env criado a partir do .env.example.'
 }
 
 # ---------------------------------------------------------------- 4. Validacao
@@ -87,6 +88,27 @@ if ($SetupOnly) {
     Write-Host ''
     Write-Host 'Ambiente pronto. Para iniciar o servidor: .\Start.ps1'
     exit 0
+}
+
+# ---------------------------------------------------------------- Backend
+# Le BACKEND_URL e VITE_MODO_DEMO do .env (padrao: http://localhost:3000, modo real)
+$backend = 'http://localhost:3000'
+$modoDemo = $false
+foreach ($linha in Get-Content '.env') {
+    if ($linha -match '^\s*BACKEND_URL\s*=\s*(\S+)') { $backend = $Matches[1].TrimEnd('/') }
+    if ($linha -match '^\s*VITE_MODO_DEMO\s*=\s*true') { $modoDemo = $true }
+}
+if ($modoDemo) {
+    Write-Host '      Modo demonstracao ligado: o front nao usa o backend.'
+} else {
+    try {
+        Invoke-RestMethod -Uri "$backend/api/health" -TimeoutSec 3 | Out-Null
+        Write-Host "      Backend respondendo em $backend"
+    } catch {
+        Write-Host ''
+        Write-Host "AVISO: o backend nao respondeu em $backend." -ForegroundColor Yellow
+        Write-Host '       Abra outra janela e rode:  cd backend ; npm.cmd install ; npm.cmd start' -ForegroundColor Yellow
+    }
 }
 
 Write-Host ''

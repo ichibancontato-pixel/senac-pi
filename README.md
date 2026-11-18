@@ -15,7 +15,7 @@ Aplicação web para gestão dos dados cadastrais de uma universidade: alunos, d
 - Cadastra, consulta e exclui fornecedores; a exclusão é bloqueada quando há contrato vigente ou pendência financeira.
 - Consulta pessoas físicas e jurídicas por CPF/CNPJ, matrícula, nome ou tipo, mostrando o vínculo de cada uma e o perfil completo.
 - Gera o relatório gerencial de matrículas por período e curso.
-- Layout responsivo, seguindo os protótipos de interface do projeto.
+- O layout é responsivo e segue os protótipos de interface do projeto.
 
 ## Stack
 
@@ -31,13 +31,11 @@ Aplicação web para gestão dos dados cadastrais de uma universidade: alunos, d
 - Node.js 20.19+ ou 22.12+ (recomendado: versão LTS)
 - Windows para usar o `Start.ps1` do front-end (em Linux ou macOS, use os comandos npm abaixo)
 
-Observação: se o Node.js não estiver instalado, o `Start.ps1` pergunta se deseja instalar via winget.
+Se o Node.js não estiver instalado, o `Start.ps1` oferece a instalação via winget.
 
 ## Como executar (recomendado)
 
-São duas janelas de terminal: uma para o backend e outra para o front-end.
-
-**1. Backend** (primeira janela):
+Use duas janelas de terminal. Na primeira, suba o backend:
 
 ```powershell
 cd backend
@@ -47,7 +45,7 @@ npm.cmd start
 
 O terminal deve mostrar `Servidor backend rodando em http://localhost:3000`.
 
-**2. Front-end** (segunda janela):
+Na segunda, suba o front-end:
 
 ```powershell
 cd frontend
@@ -118,7 +116,7 @@ O perfil escolhido na entrada é enviado ao backend em todas as chamadas, no cab
 | RH | Cadastrar Docente |
 | Setor de Compras | Consultar Fornecedor, Cadastrar Fornecedor |
 
-Abrir pelo endereço uma tela de outro perfil mostra "Acesso negado". Para trocar de perfil, use "[ trocar perfil ]" no menu.
+Quem abrir pelo endereço uma tela de outro perfil vê "Acesso negado". Para trocar de perfil, use "[ trocar perfil ]" no menu.
 
 ## Telas
 
@@ -136,9 +134,9 @@ Abrir pelo endereço uma tela de outro perfil mostra "Acesso negado". Para troca
 
 ## Integração com o backend
 
-O front-end chama `/api/...` no próprio endereço (porta 5173), e o Vite repassa essas chamadas para o backend (proxy configurado em `frontend/vite.config.ts`). Assim o navegador não esbarra em CORS, que o backend não libera.
+O front-end chama `/api/...` no próprio endereço (porta 5173) e o Vite repassa essas chamadas para o backend, pelo proxy configurado em `frontend/vite.config.ts`. Isso evita o bloqueio de CORS, que o backend não libera.
 
-O perfil vai no cabeçalho sem acento (`Secretaria Academica`): o navegador envia cabeçalhos em Latin-1 e o "ê" chegaria corrompido. O backend compara os perfis sem acento, então o resultado é o mesmo.
+O perfil vai no cabeçalho sem acento (`Secretaria Academica`), porque o navegador envia cabeçalhos em Latin-1 e o "ê" chegaria corrompido. Como o backend compara os perfis sem acento, ele reconhece o perfil normalmente.
 
 Rotas do backend usadas pelo front-end:
 
@@ -157,14 +155,14 @@ Rotas do backend usadas pelo front-end:
 | `GET /api/pessoas/:id` | Perfil da pessoa |
 | `GET /api/relatorios/matriculas?periodo=&curso=` | Relatório de Matrículas |
 
-Os tipos dos dados trocados estão em `frontend/src/types.ts`. Os testes do backend por linha de comando estão em [guia_de_testes_do_backend_windows.md](guia_de_testes_do_backend_windows.md).
+Os formatos dos dados estão em `frontend/src/types.ts`. Para testar o backend sozinho pela linha de comando, siga o [guia de testes do backend](guia_de_testes_do_backend_windows.md).
 
 ## Variáveis de ambiente do front-end
 
 Arquivo `frontend/.env` (modelo em `frontend/.env.example`):
 
 - `BACKEND_URL=http://localhost:3000`: endereço do backend para onde o Vite repassa as chamadas `/api`.
-- `VITE_MODO_DEMO=false`: com `true`, o front roda sem backend, com dados de exemplo salvos no navegador (usado para apresentar a interface sem servidor).
+- `VITE_MODO_DEMO=false`: com `true`, o front roda sem backend e usa dados de exemplo salvos no navegador.
 
 Depois de alterar o `.env`, reinicie o `npm run dev`.
 
